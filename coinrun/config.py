@@ -9,7 +9,7 @@ class ConfigSingle(object):
     """
     def __init__(self):
         self.WORKDIR = './saved_models/'
-        self.TB_DIR = '/tmp/tensorflow'
+        self.TB_DIR = './results/'
         if not os.path.exists(self.WORKDIR):
             os.makedirs(self.WORKDIR, exist_ok=True)
 
