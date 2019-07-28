@@ -139,6 +139,15 @@ class LstmPolicy(object):
         self.vf = vf
         self.step = step
         self.value = value
+    
+        def step_with_sess(sess, ob, state, mask):
+            return sess.run([a0, vf, snew, neglogp0], {X:ob, S:state, M:mask})
+
+        def value_with_sess(sess, ob, state, mask):
+            return sess.run(vf, {X:ob, S:state, M:mask}) 
+        
+        self.step_with_sess = step_with_sess
+        self.value_with_sess = value_with_sess
 
 class CnnPolicy(object):
     def __init__(self, sess, ob_space, ac_space, nbatch, nsteps, **conv_kwargs): #pylint: disable=W0613
@@ -166,6 +175,15 @@ class CnnPolicy(object):
         self.step = step
         self.value = value
 
+        def step_with_sess(sess, ob, *_args, **_kwargs):
+            a, v, neglogp = sess.run([a0, vf, neglogp0], {X:ob})
+            return a, v, self.initial_state, neglogp
+
+        def value_with_sess(sess,ob, *_args, **_kwargs):
+            return sess.run(vf, {X:ob})
+
+        self.step_with_sess = step_with_sess
+        self.value_with_sess = value_with_sess
 
 def get_policy():
     use_lstm = Config.USE_LSTM
