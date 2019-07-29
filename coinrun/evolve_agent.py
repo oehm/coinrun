@@ -48,10 +48,27 @@ def main():
     graph = tf.Graph()
     with tf.Session(graph=graph) as sess:
         model = policy(sess, env.observation_space, env.action_space, nenvs, 1)
-        model_initialiser = tf.global_variables_initializer()
+        model_init_op = tf.global_variables_initializer()
+
+        params = tf.trainable_variables()
+        params = [v for v in params if '/bias' not in v.name] # filter biases
+
+        model_noise_ops = []
+        total_num_params = 0
+        for p in params:
+            shape = p.get_shape()
+            shape_list = shape.as_list()
+            num_params = np.prod(shape_list)
+            #utils.mpi_print('param', p, num_params)
+            total_num_params += num_params
+
+            noise = tf.random_normal(shape, mean=0, stddev=1.0, dtype=tf.float32)
+            model_noise_ops.append(tf.assign_add(p, noise))
+
+        utils.mpi_print('total num params:', total_num_params)
     
     # initialise population
-    population_count = 5
+    population_count = 6
     timesteps_per_agent = 500
 
     population = [{"sess":tf.Session(graph=graph), "fit": -1} for _ in range(population_count)]
@@ -65,7 +82,7 @@ def main():
         # initialise and evaluate all new agents
         for agent in population:
             if agent["fit"] < 0:
-                agent["sess"].run(model_initialiser)
+                agent["sess"].run(model_init_op)
                 utils.load_all_params(agent["sess"])
 
                 obs = env.reset()
@@ -96,7 +113,9 @@ def main():
 
         # replace weak agents
         for agent in population[population_count//2:]:
-            agent["sess"].run(model_initialiser)
+            agent["sess"].run(model_init_op)
+            #for model_noise_op in model_noise_ops:
+            #    agent["sess"].run(model_noise_op)
             agent["fit"] = -1
 
 
