@@ -19,7 +19,15 @@ class TB_Writer(object):
         comm = MPI.COMM_WORLD
         rank = comm.Get_rank()
 
-        clean_tb_dir()
+        #clean_tb_dir()
+
+        # only clean runid result
+        if rank == 0:
+            if tf.gfile.Exists(Config.TB_DIR + '/' + Config.RUN_ID + '_' + str(rank)):
+                tf.gfile.DeleteRecursively(Config.TB_DIR + '/' + Config.RUN_ID + '_' + str(rank)) 
+            tf.gfile.MakeDirs(Config.TB_DIR + '/' + Config.RUN_ID + '_' + str(rank))
+
+        comm.Barrier()
 
         tb_writer = tf.summary.FileWriter(Config.TB_DIR + '/' + Config.RUN_ID + '_' + str(rank), sess.graph)
         total_steps = [0]

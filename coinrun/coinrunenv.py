@@ -179,7 +179,7 @@ class CoinRunVecEnv(VecEnv):
         self.handle = 0
 
     def reset(self):
-        print("CoinRun ignores resets")
+        # print("CoinRun ignores resets")
         obs, _, _, _ = self.step_wait()
         return obs
 
