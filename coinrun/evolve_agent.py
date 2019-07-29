@@ -149,7 +149,7 @@ def main():
 
         generation += 1
     
-    utils.mpi_print(tfirststart - time.time())
+    utils.mpi_print(time.time() - tfirststart)
 
     # save best performing agent
     load_agent(population[0])
