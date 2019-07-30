@@ -5,6 +5,7 @@ Train an agent using a genetic algorithm.
 import os
 import copy
 import time
+import math
 import numpy as np
 import random
 from mpi4py import MPI
@@ -32,7 +33,7 @@ def main():
 
     nenvs = Config.NUM_ENVS
     #utils.mpi_print("nenvs", nenvs)
-    total_timesteps = int(2e3)
+    total_timesteps = int(1e6)
 
     datapoints = []
 
@@ -56,7 +57,6 @@ def main():
     params = tf.trainable_variables()
     params = [v for v in params if '/bias' not in v.name] # filter biases
 
-
     model_noise_ops = []
     total_num_params = 0
     for p in params:
@@ -68,6 +68,7 @@ def main():
 
         noise = tf.random_normal(shape, mean=0, stddev=0.01, dtype=tf.float32)
         model_noise_ops.append(tf.assign_add(p, noise))
+        # test normalisatiom
 
     utils.mpi_print('total num params:', total_num_params)
     
@@ -92,15 +93,17 @@ def main():
             rew_accum += rew
         return sum(rew_accum)
 
+    # initialise population
+    population_count = 32
+    timesteps_per_agent = 500
+
+    # load data dummy
     load_data = Config.get_load_data('default')
     if load_data is not None:
         utils.load_all_params(sess)
         for i in range(10):
-            utils.mpi_print(run(500))
-
-    # initialise population
-    population_count = 24
-    timesteps_per_agent = 500
+            utils.mpi_print(run(timesteps_per_agent))
+        return
 
     population = [{"seed":random.randint(0,10000), "mut":[], "fit": -1} for _ in range(population_count)]
 
@@ -117,7 +120,8 @@ def main():
 
         # initialise and evaluate all new agents
         for agent in population:
-            if agent["fit"] < 0:
+            #if agent["fit"] < 0: # test/
+            if True: # test constant reevaluation, to dismiss "lucky runs" -> seems good
                 
                 load_agent(agent)
 
@@ -125,26 +129,44 @@ def main():
 
                 timesteps_done += timesteps_per_agent
 
-        utils.mpi_print([agent["fit"] for agent in population]) 
 
         # sort by fitness
         population.sort(key=lambda k: k['fit'], reverse=True) 
+
+        utils.mpi_print([agent["fit"] for agent in population]) 
 
         #
         datapoints.append([generation, population[0]["fit"]])
 
         if not timesteps_done < total_timesteps:
             break
-
+    
         # replace weak agents
-        for i in range(population_count//4):
-            source_agent = population[i]
-            for j in range(3):
-                target_agent = population[-i-1-(j * population_count//4)]
-                target_agent["seed"] = source_agent["seed"]
-                target_agent["mut"] = copy.deepcopy(source_agent["mut"])
-                target_agent["mut"].append(random.randint(0,10000))
-                target_agent["fit"] = -1
+        seed = int(time.time()) % 10000
+        set_global_seeds(seed * 100 + rank)
+
+        survive_factor = 0.25
+        cutoff_index = math.floor(population_count*survive_factor)
+        source_agents = population[:cutoff_index]
+        k = 0
+        for i in range(cutoff_index, population_count):
+            population[i] = copy.deepcopy(source_agents[k % len(source_agents)])
+            population[i]["fit"] = -1
+            if k != 0: # test degeneration protection
+            #if True: # test/
+                population[i]["mut"].append(random.randint(0,10000))
+            k += 1
+
+
+        #for i in range(population_count//4):
+        #    source_agent = population[i]
+        #    for j in range(3):
+        #        target_agent = population[-i-1-(j * population_count//4)]
+        #        target_agent = copy.deepcopy(source_agent)
+        #        if i != 0: # test degeneration protection
+        #        #if True: # test/
+        #            target_agent["mut"].append(random.randint(0,10000))
+        #        target_agent["fit"] = -1
 
 
         generation += 1
@@ -152,9 +174,10 @@ def main():
     utils.mpi_print(time.time() - tfirststart)
 
     # save best performing agent
+    population.sort(key=lambda k: k['fit'], reverse=True) 
     load_agent(population[0])
     for i in range(10):
-        utils.mpi_print(run(500))
+        utils.mpi_print(run(timesteps_per_agent))
 
     save_model(sess)
 
