@@ -81,7 +81,7 @@ def restore_params(sess, loaded_params, params):
 
     restores = []
     for p, loaded_p in zip(params, loaded_params):
-        print('restoring', p)
+        #print('restoring', p)
         restores.append(p.assign(loaded_p))
     sess.run(restores)
 
@@ -100,7 +100,7 @@ def save_params_in_scopes(sess, scopes, filename, base_dict=None):
         params = tf.trainable_variables(scope)
 
         if len(params) > 0:
-            print('saving scope', scope, filename)
+            #print('saving scope', scope, filename)
             ps = sess.run(params)
 
             param_dict[scope] = ps
