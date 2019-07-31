@@ -187,10 +187,10 @@ def main():
             utils.mpi_print("__ average fit", "{:.1f}".format(np.mean([agent["fit"] for agent in population])),
                             ", t_done", timesteps_done,
                             ", took", "{:.1f}".format(time.time() - t_generation_start), "s",
-                            ", total", "{:.1f}".format(time.time() - t_generation_start), "s __")
+                            ", total", "{:.1f}".format(time.time() - t_first_start), "s __")
 
             # cleanup to prevent disk clutter
-            to_be_removed = set(re.sub('\..*$', '', f) for f in os.listdir(utils.file_to_path(sub_dir))) - set([agent["name"] for agent in population])
+            to_be_removed = set(re.sub(r'\..*$', '', f) for f in os.listdir(utils.file_to_path(sub_dir))) - set([agent["name"] for agent in population])
             for filename in to_be_removed: 
                 os.remove(utils.file_to_path(sub_dir+ "/" + filename + ".index"))
                 os.remove(utils.file_to_path(sub_dir+ "/" + filename + ".data-00000-of-00001"))
