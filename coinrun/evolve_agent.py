@@ -34,16 +34,18 @@ def main():
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True # pylint: disable=E1101
 
+    # perpare directory
     sub_dir = Config.get_save_file(base_name="tmp")
     if os.path.isdir(utils.file_to_path(sub_dir)):
         shutil.rmtree(path=utils.file_to_path(sub_dir))
     os.mkdir(utils.file_to_path(sub_dir))
 
+    # params
     nenvs = Config.NUM_ENVS
     #utils.mpi_print("nenvs", nenvs)
-    total_timesteps = int(1e7)
-
-    datapoints = []
+    total_timesteps = int(2e5)
+    population_count = 32
+    timesteps_per_agent = 500
 
     env = utils.make_general_env(nenvs, seed=rank)
     env = wrappers.add_final_wrappers(env)
@@ -57,12 +59,12 @@ def main():
     model = policy(sess, env.observation_space, env.action_space, nenvs, 1)
     model_init_op = tf.global_variables_initializer()
 
-    params = tf.trainable_variables()
-    params = [v for v in params if '/b' not in v.name] # filter biases
+    params = tf.trainable_variables("model")
+    params_filtered = [v for v in params if '/b' not in v.name] # filter biases
 
     model_noise_ops = []
     total_num_params = 0
-    for p in params:
+    for p in params_filtered:
         shape = p.get_shape()
         shape_list = shape.as_list()
         num_params = np.prod(shape_list)
@@ -74,38 +76,19 @@ def main():
         # test normalisatiom
 
     utils.mpi_print('total num params:', total_num_params)
-    
-    # initialise population
-    population_count = 64
-    timesteps_per_agent = 500
 
-    # load data dummy
-    load_data = Config.get_load_data('default')
-    if load_data is not None:
-        utils.load_all_params(sess)
-        for i in range(10):
-            utils.mpi_print(run(timesteps_per_agent))
-        return
+    # function definitions
+    def save_model(name=None):
+        file_name = sub_dir + "/" + name if name else Config.get_save_file()
+        utils.save_params_in_scopes(sess, ['model'], file_name)
 
-    population = [{"name":str(uuid.uuid1()), "fit": -1, "need_mut":False} for _ in range(population_count)]
-
-    utils.mpi_print("== population size ", population_count, ", nenvs ", nenvs, ", t_agent ", timesteps_per_agent, " ==")
-
-    def save_model(sess, sub_dir=None, base_name=None):
-        base_dict = {'datapoints': datapoints}
-        file_name = Config.get_save_file(base_name=base_name)
-        if sub_dir is not None:
-            file_name = sub_dir + "/" + file_name
-        utils.save_params_in_scopes(sess, ['model'], file_name, base_dict)
-
-    def load_model(sess, sub_dir=None, base_name=None):
-        file_name = Config.get_save_file(base_name=base_name)
-        if sub_dir is not None:
-            file_name = sub_dir + "/" + file_name
+    def load_model(name=None):
+        file_name = sub_dir + "/" + name
         try:
             load_data = joblib.load(utils.file_to_path(file_name))
         except IOError:
             load_data = None
+
         if load_data is not None:
             params_dict = load_data['params']
         else:
@@ -138,16 +121,33 @@ def main():
 
         # save best performing agent
         population.sort(key=lambda k: k['fit'], reverse=True) 
-        load_model(sess=sess, sub_dir=sub_dir, base_name=population[0]["name"])
+        load_model(name=population[0]["name"])
         
         # final evaluation
-        for _ in range(10):
-            utils.mpi_print(run(timesteps_per_agent))
-        save_model(sess)
+        #for _ in range(10):
+        #    utils.mpi_print(run(timesteps_per_agent))
+
+        save_model()
 
         # cleanup
         sess.close()
         shutil.rmtree(path=utils.file_to_path(sub_dir))
+
+    # load data from restore point and seed the whole population
+    load_data = Config.get_load_data('default')
+    loaded_name = None
+    if load_data is not None:
+        utils.load_all_params(sess)
+        loaded_name = str(uuid.uuid1())
+        save_model(name=loaded_name)
+        
+
+    # initialise population
+    # either all random and no mutations pending
+    # or all from the restore point with all but one to be mutated
+    population = [{"name": loaded_name or str(uuid.uuid1()), "fit": -1, "need_mut": loaded_name != None and i != 0} for i in range(population_count)]
+
+    utils.mpi_print("== population size ", population_count, ", nenvs ", nenvs, ", t_agent ", timesteps_per_agent, " ==")
 
     t_first_start = time.time()
     try:
@@ -165,17 +165,18 @@ def main():
                 if True: # test constant reevaluation, to dismiss "lucky runs" -> seems good
                     
                     need_save = False
-                    if not load_model(sess=sess, sub_dir=sub_dir, base_name=agent["name"]):
+                    if not load_model(name=agent["name"]):
                         sess.run(model_init_op)
                         need_save = True
 
                     if agent["need_mut"]:
-                        population[i]["name"] = str(uuid.uuid1())
                         sess.run(model_noise_ops)
+                        agent["need_mut"] = False
+                        agent["name"] = str(uuid.uuid1())
                         need_save = True
 
                     if need_save:
-                        save_model(sess=sess, sub_dir=sub_dir, base_name=agent["name"])
+                        save_model(name=agent["name"])
                         
                     agent["fit"] = run(timesteps_per_agent)
 
@@ -187,38 +188,41 @@ def main():
 
             utils.mpi_print(*["{:5}".format(int(agent["fit"])) for agent in population])
 
-            #
-            datapoints.append([generation, population[0]["fit"]])
-
             utils.mpi_print("__ average", "{:.1f}".format(np.mean([agent["fit"] for agent in population])), " __")
             utils.mpi_print("__ took", "{:.1f}".format(time.time() - t_generation_start), " s __")
             utils.mpi_print("")
+
+            # cleanup to prevent hdd clutter
+            to_be_removed = set(os.listdir(utils.file_to_path(sub_dir))) - set([agent["name"] for agent in population])
+            for filename in to_be_removed: 
+                os.remove(utils.file_to_path(sub_dir+ "/" + filename))
 
             if not timesteps_done < total_timesteps:
                 break
         
             # replace weak agents
-            survive_factor = 0.25
-            cutoff_index = math.floor(population_count*survive_factor)
-            source_agents = population[:cutoff_index]
+            duplicate_factor =  1.0 / 16
+            survive_factor = 1.0 / 4
+            cutoff_duplicate = math.floor(population_count*duplicate_factor)
+            cutoff_survive = math.floor(population_count*survive_factor)
+            source_agents = population[:cutoff_survive]
             k = 0
-            for i in range(cutoff_index, population_count):
-                population[i] = copy.deepcopy(source_agents[k % len(source_agents)])
+            for i in range(cutoff_survive, population_count):
+                population[i] = copy.deepcopy(source_agents[k])
                 population[i]["fit"] = -1
-                if k != 0: # test degeneration protection
+                if k < cutoff_duplicate: # test degeneration protection
                 #if True: # test/
                     population[i]["need_mut"] = True
                     
-                    
-                k += 1
+                k = (k + 1) % len(source_agents)
 
             generation += 1
+        
+        utils.mpi_print(time.time() - t_first_start)
+
+        clean_exit()
     except KeyboardInterrupt:
         clean_exit()
-    
-    utils.mpi_print(time.time() - t_first_start)
-
-    clean_exit()
 
     return 0
 
