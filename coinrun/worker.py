@@ -20,7 +20,7 @@ class Worker:
         scope_name = "thread_" + str(thread_id)
         self.scope_dir = scope_name + "/"
         with tf.variable_scope(scope_name):
-            self.model = policy(sess, self.env.observation_space, self.env.action_space, nenvs, 1)
+            self.model = policy(sess, self.env.observation_space, self.env.action_space, nenvs, 1, create_additional=False)
 
             self.params = tf.trainable_variables(self.scope_dir + "model")
             params_train = [v for v in self.params if '/b' not in v.name] # filter biases

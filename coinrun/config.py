@@ -195,7 +195,7 @@ class ConfigSingle(object):
             self.NUM_LEVELS = 0
             self.USE_DATA_AUGMENTATION = 0
             self.EPSILON_GREEDY = 0
-            self.HIGH_DIFFICULTY = 1
+            #self.HIGH_DIFFICULTY = 1
 
         if self.PAINT_VEL_INFO < 0:
             if self.GAME_TYPE == 'standard':
@@ -205,7 +205,7 @@ class ConfigSingle(object):
 
         if self.TEST_EVAL:
             self.NUM_LEVELS = 0
-            self.HIGH_DIFFICULTY = 1
+            #self.HIGH_DIFFICULTY = 1
 
         self.TRAIN_TEST_COMM = MPI.COMM_WORLD.Split(1 if self.is_test_rank() else 0, 0)
 

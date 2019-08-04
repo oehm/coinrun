@@ -107,7 +107,7 @@ def choose_cnn(images):
 
 class LstmPolicy(object):
 
-    def __init__(self, sess, ob_space, ac_space, nbatch, nsteps, nlstm=256):
+    def __init__(self, sess, ob_space, ac_space, nbatch, nsteps, create_additional=True, nlstm=256):
         nenv = nbatch // nsteps
         self.pdtype = make_pdtype(ac_space)
         X, processed_x = observation_input(ob_space, nbatch)
@@ -120,15 +120,23 @@ class LstmPolicy(object):
             ms = batch_to_seq(M, nenv, nsteps)
             h5, snew = lstm(xs, ms, S, 'lstm1', nh=nlstm)
             h5 = seq_to_batch(h5)
-            vf = fc(h5, 'v', 1)[:,0]
+            if(create_additional):
+                vf = fc(h5, 'v', 1)[:,0]
             self.pd, self.pi = self.pdtype.pdfromlatent(h5)
 
         a0 = self.pd.sample()
-        neglogp0 = self.pd.neglogp(a0)
+        if(create_additional):
+            neglogp0 = self.pd.neglogp(a0)
         self.initial_state = np.zeros((nenv, nlstm*2), dtype=np.float32)
 
         def step(ob, state, mask):
-            return sess.run([a0, vf, snew, neglogp0], {X:ob, S:state, M:mask})
+            if(create_additional):
+                a, v, s, neglogp = sess.run([a0, vf, snew, neglogp0], {X:ob, S:state, M:mask})
+            else:
+                a, s = sess.run([a0, snew], {X:ob, S:state, M:mask})
+                v = np.zeros_like(a)
+                neglogp = np.zeros_like(a)
+            return a, v, s, neglogp
 
         def value(ob, state, mask):
             return sess.run(vf, {X:ob, S:state, M:mask})
@@ -136,54 +144,44 @@ class LstmPolicy(object):
         self.X = X
         self.M = M
         self.S = S
-        self.vf = vf
+        if(create_additional):
+            self.vf = vf
+            self.value = value
         self.step = step
-        self.value = value
-    
-        def step_with_sess(sess, ob, state, mask):
-            return sess.run([a0, vf, snew, neglogp0], {X:ob, S:state, M:mask})
-
-        def value_with_sess(sess, ob, state, mask):
-            return sess.run(vf, {X:ob, S:state, M:mask}) 
-        
-        self.step_with_sess = step_with_sess
-        self.value_with_sess = value_with_sess
 
 class CnnPolicy(object):
-    def __init__(self, sess, ob_space, ac_space, nbatch, nsteps, **conv_kwargs): #pylint: disable=W0613
+    def __init__(self, sess, ob_space, ac_space, nbatch, nsteps, create_additional=True, **conv_kwargs): #pylint: disable=W0613
         self.pdtype = make_pdtype(ac_space)
         X, processed_x = observation_input(ob_space, nbatch)
 
         with tf.variable_scope("model", reuse=tf.AUTO_REUSE):
             h, self.dropout_assign_ops = choose_cnn(processed_x)
-            vf = fc(h, 'v', 1)[:,0]
+            if create_additional:
+                vf = fc(h, 'v', 1)[:,0]
             self.pd, self.pi = self.pdtype.pdfromlatent(h, init_scale=0.01)
 
         a0 = self.pd.sample()
-        neglogp0 = self.pd.neglogp(a0)
+        if(create_additional):
+            neglogp0 = self.pd.neglogp(a0)
         self.initial_state = None
 
         def step(ob, *_args, **_kwargs):
-            a, v, neglogp = sess.run([a0, vf, neglogp0], {X:ob})
+            if create_additional:
+                a, v, neglogp = sess.run([a0, vf, neglogp0], {X:ob})
+            else:
+                a = sess.run(a0, {X:ob})
+                v = np.zeros_like(a)
+                neglogp = np.zeros_like(a)
             return a, v, self.initial_state, neglogp
 
         def value(ob, *_args, **_kwargs):
             return sess.run(vf, {X:ob})
 
         self.X = X
-        self.vf = vf
+        if create_additional:
+            self.vf = vf
+            self.value = value
         self.step = step
-        self.value = value
-
-        def step_with_sess(sess, ob, *_args, **_kwargs):
-            a, v, neglogp = sess.run([a0, vf, neglogp0], {X:ob})
-            return a, v, self.initial_state, neglogp
-
-        def value_with_sess(sess,ob, *_args, **_kwargs):
-            return sess.run(vf, {X:ob})
-
-        self.step_with_sess = step_with_sess
-        self.value_with_sess = value_with_sess
 
 def get_policy():
     use_lstm = Config.USE_LSTM
