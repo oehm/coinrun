@@ -45,12 +45,14 @@ def main():
         shutil.rmtree(path=sub_dir)
     os.mkdir(sub_dir)
 
-    # params
+    # hyperparams
     nenvs = Config.NUM_ENVS
-    total_timesteps = int(2e5)
-    population_count = 64
-    timesteps_per_agent = 100
-    worker_count = 8
+    total_timesteps = Config.TIMESTEPS
+    population_size = Config.POPULATION_SIZE
+    timesteps_per_agent = Config.TIMESTEPS_AGENT
+    worker_count = Config.WORKER_COUNT
+    duplicate_factor =  Config.DUP_F
+    survive_factor = Config.SURV_F
 
     # create environment
     def make_env():
@@ -97,9 +99,9 @@ def main():
     population = [{"name": loaded_name or str(uuid.uuid1()), 
                    "fit": -1, 
                    "need_mut": loaded_name != None and i != 0} 
-                   for i in range(population_count)]
+                   for i in range(population_size)]
 
-    utils.mpi_print("== population size", population_count, ", t_agent ", timesteps_per_agent, " ==")
+    utils.mpi_print("== population size", population_size, ", t_agent ", timesteps_per_agent, " ==")
 
     t_first_start = time.time()
     try:
@@ -152,13 +154,11 @@ def main():
                 break
         
             # mark weak agents for replacement
-            duplicate_factor =  1.0 / 16
-            survive_factor = 1.0 / 8
-            cutoff_duplicate = math.floor(population_count*duplicate_factor)
-            cutoff_survive = math.floor(population_count*survive_factor)
+            cutoff_duplicate = math.floor(population_size*duplicate_factor)
+            cutoff_survive = math.floor(population_size*survive_factor)
             source_agents = population[:cutoff_survive]
             k = 0
-            for i in range(cutoff_survive, population_count):
+            for i in range(cutoff_survive, population_size):
                 population[i]["name"] = source_agents[k]["name"]
                 population[i]["fit"] = -1
                 if k < cutoff_duplicate: # test degeneration protection
