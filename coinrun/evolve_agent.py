@@ -48,8 +48,9 @@ def main():
     # params
     nenvs = Config.NUM_ENVS
     total_timesteps = int(2e5)
-    population_count = 16
+    population_count = 64
     timesteps_per_agent = 500
+    worker_count = 8
 
     # create environment
     def make_env():
@@ -57,11 +58,14 @@ def main():
         env = wrappers.add_final_wrappers(env)
         return env
         
-    # setup model and all tensorflow ops
+    # setup session and workers, and therefore tensorflow ops
     graph = tf.get_default_graph()
     sess = tf.Session(graph=graph)
 
     policy = policies.get_policy()
+
+    workers = [Worker(sess, i, nenvs, make_env, policy, sub_dir) for i in range(worker_count)]
+
 
     def clean_exit():
         utils.mpi_print("")
@@ -70,8 +74,8 @@ def main():
 
         # save best performing agent
         population.sort(key=lambda k: k['fit'], reverse=True) 
-        population[0]["worker"].restore_model(name=population[0]["name"])
-        population[0]["worker"].dump_model()
+        workers[0].restore_model(name=population[0]["name"])
+        workers[0].dump_model()
 
         # cleanup
         sess.close()
@@ -90,8 +94,7 @@ def main():
     # or all from restore point with all but one to be mutated
     population = [{"name": loaded_name or str(uuid.uuid1()), 
                    "fit": -1, 
-                   "need_mut": loaded_name != None and i != 0,
-                   "worker": Worker(sess, i, nenvs, make_env, policy, sub_dir)} 
+                   "need_mut": loaded_name != None and i != 0} 
                    for i in range(population_count)]
 
     utils.mpi_print("== population size", population_count, ", t_agent ", timesteps_per_agent, " ==")
@@ -107,19 +110,24 @@ def main():
             utils.mpi_print("")
             utils.mpi_print("__ Generation", generation, " __")
 
-
-            running_threads = []
             # initialise and evaluate all new agents
             for agent in population:
                 #if agent["fit"] < 0: # test/
                 if True: # test constant reevaluation, to dismiss "lucky runs" -> seems good
-
-                    running_threads.append(agent["worker"].work(agent, timesteps_per_agent))
+                    
+                    # pick worker from pool and let it work on the agent
+                    not_in_work = True
+                    while not_in_work:
+                        for worker in workers:
+                            if worker.can_take_work():
+                                worker.work(agent,timesteps_per_agent)
+                                not_in_work = False
+                                break
 
                     timesteps_done += timesteps_per_agent
 
-            for thread in running_threads:
-                Thread.join(thread)
+            for worker in workers:
+                Thread.join(worker.thread)
 
             # sort by fitness
             population.sort(key=lambda k: k['fit'], reverse=True) 
@@ -143,7 +151,7 @@ def main():
         
             # mark weak agents for replacement
             duplicate_factor =  1.0 / 16
-            survive_factor = 1.0 / 4
+            survive_factor = 1.0 / 8
             cutoff_duplicate = math.floor(population_count*duplicate_factor)
             cutoff_survive = math.floor(population_count*survive_factor)
             source_agents = population[:cutoff_survive]

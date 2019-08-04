@@ -12,6 +12,7 @@ class Worker:
     def __init__(self, sess, thread_id, nenvs, make_env, policy, sub_dir):
         self.sess = sess
         self.thread_id = thread_id
+        self.thread = None
         self.nenvs = nenvs
         self.env = make_env()
         self.working_dir = sub_dir + "/"
@@ -116,6 +117,9 @@ class Worker:
         agent["fit"] = sum(rew_accum)
 
     def work(self, agent, timesteps):
-        thread = Thread(target=self.work_thread, args=[agent, timesteps])
-        thread.start()
-        return thread
+        self.thread = Thread(target=self.work_thread, args=[agent, timesteps])
+        self.thread.start()
+        return self.thread
+
+    def can_take_work(self):
+        return self.thread == None or not self.thread.is_alive()
