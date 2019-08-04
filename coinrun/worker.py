@@ -23,7 +23,7 @@ class Worker:
             self.model = policy(sess, self.env.observation_space, self.env.action_space, nenvs, 1)
 
             self.params = tf.trainable_variables(self.scope_dir + "model")
-            params_filtered = [v for v in self.params if '/b' not in v.name] # filter biases
+            params_train = [v for v in self.params if '/b' not in v.name] # filter biases
 
             params_names = [p.name for p in self.params]
             params_unscoped = [re.sub(self.scope_dir, "", n) for n in params_names] 
@@ -32,7 +32,7 @@ class Worker:
 
             self.model_noise_ops = []
             #total_num_params = 0
-            for p in params_filtered:
+            for p in params_train:
                 shape = p.get_shape()
                 #shape_list = shape.as_list()
                 #num_params = np.prod(shape_list)
@@ -49,6 +49,29 @@ class Worker:
 
             self.model_saver = tf.train.Saver(params_dict)
 
+    # load model from coinruns file format, if resore-id was given
+    def try_load_model(self):
+        load_data = Config.get_load_data('default')
+        if load_data is None:
+            return False
+        
+        params_dict = load_data['params']
+
+        if "model" in params_dict:
+            print('Loading saved file for scope', "model")
+
+            loaded_params = params_dict["model"]
+
+            if len(loaded_params) != len(self.params):
+                print('param mismatch', len(loaded_params), len(self.params))
+                assert(False)
+
+            restore_ops = []
+            for p, loaded_p in zip(self.params, loaded_params):
+                restore_ops.append(tf.assign(p, loaded_p))
+            self.sess.run(restore_ops)
+            return True
+        return False
 
     # dump compatible with coinruns file format
     def dump_model(self):
@@ -114,7 +137,7 @@ class Worker:
             obs, rew, done, info = self.env.step(action)
             rew_accum += rew
 
-        agent["fit"] = sum(rew_accum)
+        agent["fit"] = np.mean(rew_accum)
 
     def work(self, agent, timesteps):
         self.thread = Thread(target=self.work_thread, args=[agent, timesteps])

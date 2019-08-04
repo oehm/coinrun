@@ -49,7 +49,7 @@ def main():
     nenvs = Config.NUM_ENVS
     total_timesteps = int(2e5)
     population_count = 64
-    timesteps_per_agent = 500
+    timesteps_per_agent = 100
     worker_count = 8
 
     # create environment
@@ -68,6 +68,10 @@ def main():
 
 
     def clean_exit():
+
+        for worker in workers:
+            Thread.join(worker.thread)
+
         utils.mpi_print("")
         utils.mpi_print("== total duration", "{:.1f}".format(time.time() - t_first_start), " s ==")
         utils.mpi_print(" exit...")
@@ -79,15 +83,13 @@ def main():
 
         # cleanup
         sess.close()
-        shutil.rmtree(path=utils.file_to_path(sub_dir))
+        shutil.rmtree(path=sub_dir)
 
-    # load data from restore point and seed the whole population TODO broken with threads
-    # load_data = Config.get_load_data('default')
+    # load data from restore point and seed the whole population
     loaded_name = None
-    # if load_data is not None:
-    #     utils.load_all_params(sess)
-    #     loaded_name = str(uuid.uuid1())
-    #     save_model(name=loaded_name)
+    if workers[0].try_load_model():
+        loaded_name = str(uuid.uuid1())
+        workers[0].save_model(name=loaded_name)
         
     # initialise population
     # either all random and no mutations pending
@@ -120,7 +122,7 @@ def main():
                     while not_in_work:
                         for worker in workers:
                             if worker.can_take_work():
-                                worker.work(agent,timesteps_per_agent)
+                                worker.work(agent, timesteps_per_agent)
                                 not_in_work = False
                                 break
 
@@ -133,7 +135,7 @@ def main():
             population.sort(key=lambda k: k['fit'], reverse=True) 
 
             # print stuff
-            utils.mpi_print(*["{:5}".format(int(agent["fit"])) for agent in population])
+            utils.mpi_print(*["{:5.1f}".format(agent["fit"]) for agent in population])
             utils.mpi_print("__ average fit", "{:.1f}".format(np.mean([agent["fit"] for agent in population])),
                             ", t_done", timesteps_done,
                             ", took", "{:.1f}".format(time.time() - t_generation_start), "s",
