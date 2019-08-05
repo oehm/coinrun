@@ -14,11 +14,14 @@ from coinrun import policies, wrappers
 mpi_print = utils.mpi_print
 
 def create_act_model(sess, env, nenvs):
+    load_data = Config.get_load_data('default')
+    create_additional = 'use_minimum_model' not in load_data['args']
+
     ob_space = env.observation_space
     ac_space = env.action_space
 
     policy = policies.get_policy()
-    act = policy(sess, ob_space, ac_space, nenvs, 1, reuse=False)
+    act = policy(sess, ob_space, ac_space, nenvs, 1, reuse=False, create_additional=create_additional)
 
     return act
 

@@ -81,6 +81,7 @@ class Worker:
         save_path = utils.file_to_path(Config.get_save_file())
 
         data_dict['args'] = Config.get_args_dict()
+        data_dict['args']['use_minimum_model'] = True
         param_dict = {}
 
         if len(self.params) > 0:
