@@ -98,7 +98,8 @@ def main():
     # or all from restore point with all but one to be mutated
     population = [{"name": loaded_name or str(uuid.uuid1()), 
                    "fit": -1, 
-                   "need_mut": loaded_name != None and i != 0} 
+                   "need_mut": loaded_name != None and i != 0,
+                   "age": -1} 
                    for i in range(population_size)]
 
     utils.mpi_print("== population size", population_size, ", t_agent ", timesteps_per_agent, " ==")
@@ -137,7 +138,8 @@ def main():
             population.sort(key=lambda k: k['fit'], reverse=True) 
 
             # print stuff
-            utils.mpi_print(*["{:5.1f}".format(agent["fit"]) for agent in population])
+            utils.mpi_print(*["{:5.3f}".format(agent["fit"]) for agent in population])
+            utils.mpi_print(*["{:5}".format(agent["age"]) for agent in population])
             utils.mpi_print("__ average fit", "{:.1f}".format(np.mean([agent["fit"] for agent in population])),
                             ", t_done", timesteps_done,
                             ", took", "{:.1f}".format(time.time() - t_generation_start), "s",

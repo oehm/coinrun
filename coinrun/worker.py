@@ -127,18 +127,36 @@ class Worker:
         # save if necessary
         if need_save:
             self.save_model(name=agent["name"])
+            agent["age"] = 0
+        else:
+            agent["age"] += 1
         # run agent
         obs = self.env.reset()
         state = self.model.initial_state
         done = np.zeros(self.nenvs)
 
+        scores = np.zeros(self.nenvs)
+        score_counts = np.zeros(self.nenvs)
         rew_accum = 0
         for _ in range(timesteps):
-            action, values, state, _ = self.model.step( obs, state, done)
+            action, _, state, _ = self.model.step( obs, state, done)
             obs, rew, done, info = self.env.step(action)
             rew_accum += rew
+            for i, d in enumerate(done):
+                if d:
+                    score_counts[i] += 1
+                    if 'episode' in info[i]:
+                        scores[i] += info[i].get('episode')['r']
 
-        agent["fit"] = np.mean(rew_accum)
+
+        #agent["fit"] = np.mean(rew_accum)
+        percentage_solved = np.zeros(self.nenvs)
+        for i, (score, score_count) in enumerate(zip(scores, score_counts)):
+            if score_count:
+                percentage_solved[i] = score/score_count
+
+        agent["fit"] = np.mean( percentage_solved )
+
 
     def work(self, agent, timesteps):
         self.thread = Thread(target=self.work_thread, args=[agent, timesteps])
