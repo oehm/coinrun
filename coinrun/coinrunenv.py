@@ -147,13 +147,13 @@ class CoinRunVecEnv(VecEnv):
         self.buf_rew = np.zeros([num_envs], dtype=np.float32)
         self.buf_done = np.zeros([num_envs], dtype=np.bool)
         self.buf_rgb   = np.zeros([num_envs, self.RES_H, self.RES_W, 3], dtype=np.uint8)
-        self.hires_render = Config.IS_HIGH_RES
+        self.hires_render = False
         if self.hires_render:
             self.buf_render_rgb = np.zeros([num_envs, self.VIDEORES, self.VIDEORES, 3], dtype=np.uint8)
         else:
             self.buf_render_rgb = np.zeros([1, 1, 1, 1], dtype=np.uint8)
 
-        num_channels = 1 if Config.USE_BLACK_WHITE else 3
+        num_channels = 1 if False else 3
         obs_space = gym.spaces.Box(0, 255, shape=[self.RES_H, self.RES_W, num_channels], dtype=np.uint8)
 
         super().__init__(
@@ -207,7 +207,7 @@ class CoinRunVecEnv(VecEnv):
 
         obs_frames = self.buf_rgb
 
-        if Config.USE_BLACK_WHITE:
+        if False:
             obs_frames = np.mean(obs_frames, axis=-1).astype(np.uint8)[...,None]
 
         return obs_frames, self.buf_rew, self.buf_done, self.dummy_info

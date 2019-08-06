@@ -1,16 +1,16 @@
 import numpy as np
 import uuid
 import re
-from threading import Thread
+import ray
 import joblib
 import tensorflow as tf
-import coinrun.main_utils as utils
-from coinrun.config import Config
 
-
+@ray.remote(num_gpus=0.25)
 class Worker:
-    def __init__(self, sess, thread_id, nenvs, make_env, policy, sub_dir):
-        self.sess = sess
+    def __init__(self, thread_id, nenvs, make_env, policy, sub_dir):
+        
+        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.25)
+        self.sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
         self.thread_id = thread_id
         self.thread = None
         self.nenvs = nenvs
@@ -20,7 +20,7 @@ class Worker:
         scope_name = "thread_" + str(thread_id)
         self.scope_dir = scope_name + "/"
         with tf.variable_scope(scope_name):
-            self.model = policy(sess, self.env.observation_space, self.env.action_space, nenvs, 1, create_additional=False)
+            self.model = policy(self.sess, self.env.observation_space, self.env.action_space, nenvs, 1, create_additional=False)
 
             self.params = tf.trainable_variables(self.scope_dir + "model")
             params_train = [v for v in self.params if '/b' not in v.name] # filter biases
@@ -36,14 +36,14 @@ class Worker:
                 shape = p.get_shape()
                 #shape_list = shape.as_list()
                 #num_params = np.prod(shape_list)
-                #utils.mpi_print('param', p, num_params)
+                #print('param', p, num_params)
                 #total_num_params += num_params
 
                 noise = tf.random_normal(shape, mean=0, stddev=0.01, dtype=tf.float32)
                 self.model_noise_ops.append(tf.assign_add(p, noise))
                 # TODO test normalisatiom
 
-            #utils.mpi_print('total num params:', total_num_params)
+            #print('total num params:', total_num_params)
 
             params_dict = dict(zip(params_unscoped, self.params))
 
@@ -51,47 +51,48 @@ class Worker:
 
     # load model from coinruns file format, if resore-id was given
     def try_load_model(self):
-        load_data = Config.get_load_data('default')
-        if load_data is None:
-            return False
+        # load_data = Config.get_load_data('default')
+        # if load_data is None:
+        #     return False
         
-        params_dict = load_data['params']
+        # params_dict = load_data['params']
 
-        if "model" in params_dict:
-            print('Loading saved file for scope', "model")
+        # if "model" in params_dict:
+        #     print('Loading saved file for scope', "model")
 
-            loaded_params = params_dict["model"]
+        #     loaded_params = params_dict["model"]
 
-            if len(loaded_params) != len(self.params):
-                print('param mismatch', len(loaded_params), len(self.params))
-                assert(False)
+        #     if len(loaded_params) != len(self.params):
+        #         print('param mismatch', len(loaded_params), len(self.params))
+        #         assert(False)
 
-            restore_ops = []
-            for p, loaded_p in zip(self.params, loaded_params):
-                restore_ops.append(tf.assign(p, loaded_p))
-            self.sess.run(restore_ops)
-            return True
+        #     restore_ops = []
+        #     for p, loaded_p in zip(self.params, loaded_params):
+        #         restore_ops.append(tf.assign(p, loaded_p))
+        #     self.sess.run(restore_ops)
+        #     return True
         return False
 
     # dump compatible with coinruns file format
     def dump_model(self):
+        pass
         #utils.save_params_in_scopes(self.sess, [self.scope_dir + "model"], Config.get_save_file())
-        data_dict = {}
+        # data_dict = {}
 
-        save_path = utils.file_to_path(Config.get_save_file())
+        # save_path = utils.file_to_path(Config.get_save_file())
 
-        data_dict['args'] = Config.get_args_dict()
-        data_dict['args']['use_minimum_model'] = True
-        param_dict = {}
+        # data_dict['args'] = Config.get_args_dict()
+        # data_dict['args']['use_minimum_model'] = True
+        # param_dict = {}
 
-        if len(self.params) > 0:
-            #print('saving scope', scope, filename)
-            ps = self.sess.run(self.params)
+        # if len(self.params) > 0:
+        #     #print('saving scope', scope, filename)
+        #     ps = self.sess.run(self.params)
 
-            param_dict["model"] = ps
+        #     param_dict["model"] = ps
             
-        data_dict['params'] = param_dict
-        joblib.dump(data_dict, save_path)
+        # data_dict['params'] = param_dict
+        # joblib.dump(data_dict, save_path)
 
     # save tensorflow checkpoint in subdir
     def save_model(self, name=None): 
@@ -157,11 +158,17 @@ class Worker:
 
         agent["fit"] = np.mean( percentage_solved )
 
+        return agent
 
-    def work(self, agent, timesteps):
-        self.thread = Thread(target=self.work_thread, args=[agent, timesteps])
-        self.thread.start()
-        return self.thread
+    # dummy method to get a initial working id
+    def get_working_id(self):
+        return None
+
+
+    # def work(self, agent, timesteps):
+    #     self.thread = Process(target=self.work_thread, args=[agent, timesteps])
+    #     self.thread.start()
+    #     return self.thread
 
     def can_take_work(self):
         return self.thread == None or not self.thread.is_alive()

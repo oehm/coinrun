@@ -11,13 +11,13 @@ import numpy as np
 import random
 import uuid
 import re
-from threading import Thread
-from mpi4py import MPI
+import ray
 import joblib
 import tensorflow as tf
 from baselines.common import set_global_seeds
+from baselines.common.vec_env.vec_frame_stack import VecFrameStack
 import coinrun.main_utils as utils
-from coinrun import setup_utils, policies, wrappers
+from coinrun import setup_utils, wrappers, coinrunenv
 from coinrun.config import Config
 from coinrun.worker import Worker
 
@@ -28,16 +28,10 @@ def main():
 
     args = setup_utils.setup_and_load()
 
-    comm = MPI.COMM_WORLD
-    rank = comm.Get_rank()
+    seed = int(time.time()) % 1000000
+    set_global_seeds(seed)
 
-    seed = int(time.time()) % 10000
-    set_global_seeds(seed * 100 + rank)
-
-    utils.setup_mpi_gpus()
-
-    config = tf.ConfigProto()
-    config.gpu_options.allow_growth = True # pylint: disable=E1101
+    ray.init(num_gpus=1)
 
     # perpare directory
     sub_dir = utils.file_to_path(Config.get_save_file(base_name="tmp"))
@@ -54,44 +48,63 @@ def main():
     duplicate_factor =  Config.DUP_F
     survive_factor = Config.SURV_F
 
+    # get values beforehand, so worker generation doesnt rely on config and therefore mpi
+    use_batch_norm = Config.USE_BATCH_NORM == 1
+    dropout = Config.DROPOUT
+    arch = Config.ARCHITECTURE
+    use_lstm = Config.USE_LSTM
+    game_type = Config.GAME_TYPE
+    frame_stack = Config.FRAME_STACK
+    epsilon_greedy = Config.EPSILON_GREEDY
+
     # create environment
     def make_env():
-        env = utils.make_general_env(nenvs, seed=rank)
+        env = coinrunenv.make(game_type, nenvs)
+
+        if frame_stack > 1:
+            env = VecFrameStack(env, frame_stack)
+
+        epsilon = epsilon_greedy
+
+        if epsilon > 0:
+            env = wrappers.EpsilonGreedyWrapper(env, epsilon)
         env = wrappers.add_final_wrappers(env)
         return env
         
     # setup session and workers, and therefore tensorflow ops
-    graph = tf.get_default_graph()
-    sess = tf.Session(graph=graph)
+    #graph = tf.get_default_graph()
+    #sess = tf.Session(graph=graph)
 
-    policy = policies.get_policy()
+    from coinrun import policiesForRay
+    policy = policiesForRay.get_policy()
 
-    workers = [Worker(sess, i, nenvs, make_env, policy, sub_dir) for i in range(worker_count)]
+    workers = [Worker.remote(i, nenvs, make_env, policy, sub_dir) for i in range(worker_count)]
+    working_ids = [w.get_working_id.remote() for w in workers]
 
 
     def clean_exit():
 
-        for worker in workers:
-            Thread.join(worker.thread)
+        # for worker in workers:
+        #     Process.join(worker.thread)
 
-        utils.mpi_print("")
-        utils.mpi_print("== total duration", "{:.1f}".format(time.time() - t_first_start), " s ==")
-        utils.mpi_print(" exit...")
+        print("")
+        print("== total duration", "{:.1f}".format(time.time() - t_first_start), " s ==")
+        print(" exit...")
 
         # save best performing agent
         population.sort(key=lambda k: k['fit'], reverse=True) 
-        workers[0].restore_model(name=population[0]["name"])
-        workers[0].dump_model()
+        # workers[0].restore_model(name=population[0]["name"])
+        # workers[0].dump_model()
 
         # cleanup
-        sess.close()
+        #sess.close()
         shutil.rmtree(path=sub_dir)
 
     # load data from restore point and seed the whole population
     loaded_name = None
-    if workers[0].try_load_model():
-        loaded_name = str(uuid.uuid1())
-        workers[0].save_model(name=loaded_name)
+    # if workers[0].try_load_model():
+    #     loaded_name = str(uuid.uuid1())
+    #     workers[0].save_model(name=loaded_name)
         
     # initialise population
     # either all random and no mutations pending
@@ -102,7 +115,7 @@ def main():
                    "age": -1} 
                    for i in range(population_size)]
 
-    utils.mpi_print("== population size", population_size, ", t_agent ", timesteps_per_agent, " ==")
+    print("== population size", population_size, ", t_agent ", timesteps_per_agent, " ==")
 
     t_first_start = time.time()
     try:
@@ -112,35 +125,46 @@ def main():
         while timesteps_done < total_timesteps:
             t_generation_start = time.time()
 
-            utils.mpi_print("")
-            utils.mpi_print("__ Generation", generation, " __")
+            print("")
+            print("__ Generation", generation, " __")
 
+            new_population = []
             # initialise and evaluate all new agents
             for agent in population:
                 #if agent["fit"] < 0: # test/
                 if True: # test constant reevaluation, to dismiss "lucky runs" -> seems good
-                    
+
+                    free_working_ids, _ = ray.wait(object_ids=working_ids, num_returns=1)
+                    new_agent = ray.get(free_working_ids[0])
+                    if(new_agent):
+                        new_population.append(new_agent)
+
+                    for i, worker in enumerate(workers):
+                        if free_working_ids[0] == working_ids[i]:
+                            working_ids[i] = worker.work_thread.remote(agent, timesteps_per_agent) 
                     # pick worker from pool and let it work on the agent
-                    not_in_work = True
-                    while not_in_work:
-                        for worker in workers:
-                            if worker.can_take_work():
-                                worker.work(agent, timesteps_per_agent)
-                                not_in_work = False
-                                break
+                    # not_in_work = True
+                    # while not_in_work:
+                    #     for worker in workers:
+                    #         if worker.can_take_work():
+                    #             worker.work(agent, timesteps_per_agent)
+                    #             not_in_work = False
+                    #             break
 
                     timesteps_done += timesteps_per_agent
+            
+            population = new_population
 
-            for worker in workers:
-                Thread.join(worker.thread)
+            # for worker in workers:
+            #     Process.join(worker.thread)
 
             # sort by fitness
             population.sort(key=lambda k: k['fit'], reverse=True) 
 
             # print stuff
-            utils.mpi_print(*["{:5.3f}".format(agent["fit"]) for agent in population])
-            utils.mpi_print(*["{:5}".format(agent["age"]) for agent in population])
-            utils.mpi_print("__ average fit", "{:.1f}".format(np.mean([agent["fit"] for agent in population])),
+            print(*["{:5.3f}".format(agent["fit"]) for agent in population])
+            print(*["{:5}".format(agent["age"]) for agent in population])
+            print("__ average fit", "{:.1f}".format(np.mean([agent["fit"] for agent in population])),
                             ", t_done", timesteps_done,
                             ", took", "{:.1f}".format(time.time() - t_generation_start), "s",
                             ", total", "{:.1f}".format(time.time() - t_first_start), "s __")
