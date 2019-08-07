@@ -132,7 +132,7 @@ def main():
                                 not_in_work = False
                                 break
 
-                    timesteps_done += timesteps_per_agent
+                    timesteps_done += timesteps_per_agent * nenvs
 
             for worker in workers:
                 Thread.join(worker.thread)
@@ -183,6 +183,7 @@ def main():
                 new_population.append(new_agent)
                 k = (k + 1) % len(source_agents)                    
 
+            population = new_population
             generation += 1
         
         clean_exit()
