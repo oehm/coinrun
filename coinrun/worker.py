@@ -39,7 +39,7 @@ class Worker:
                 #utils.mpi_print('param', p, num_params)
                 #total_num_params += num_params
 
-                noise = tf.random_normal(shape, mean=0, stddev=0.01, dtype=tf.float32)
+                noise = tf.random_normal(shape, mean=0, stddev=Config.MUTATION_RATE, dtype=tf.float32)
                 self.model_noise_ops.append(tf.assign_add(p, noise))
                 # TODO test normalisatiom
 

@@ -21,6 +21,8 @@ from coinrun import setup_utils, policies, wrappers
 from coinrun.config import Config
 from coinrun.worker import Worker
 
+from coinrun.tb_utils import TB_Writer
+
 def main():
     # general setup
 
@@ -51,8 +53,8 @@ def main():
     population_size = Config.POPULATION_SIZE
     timesteps_per_agent = Config.TIMESTEPS_AGENT
     worker_count = Config.WORKER_COUNT
-    duplicate_factor =  Config.DUP_F
-    survive_factor = Config.SURV_F
+    passthrough_perc =  Config.PASSTHROUGH_PERC
+    mutating_perc = Config.MUTATING_PERC
 
     # create environment
     def make_env():
@@ -68,6 +70,7 @@ def main():
 
     workers = [Worker(sess, i, nenvs, make_env, policy, sub_dir) for i in range(worker_count)]
 
+    tb_writer = TB_Writer(sess)
 
     def clean_exit():
 
@@ -138,12 +141,21 @@ def main():
             population.sort(key=lambda k: k['fit'], reverse=True) 
 
             # print stuff
-            utils.mpi_print(*["{:5.3f}".format(agent["fit"]) for agent in population])
-            utils.mpi_print(*["{:5}".format(agent["age"]) for agent in population])
-            utils.mpi_print("__ average fit", "{:.1f}".format(np.mean([agent["fit"] for agent in population])),
+            fitnesses = [agent["fit"] for agent in population]
+            ages = [agent["age"] for agent in population]
+
+            utils.mpi_print(*["{:5.3f}".format(f) for f in fitnesses])
+            utils.mpi_print(*["{:5}".format(a) for a in ages])
+            utils.mpi_print("__ average fit", "{:.1f}".format(np.mean(fitnesses)),
                             ", t_done", timesteps_done,
                             ", took", "{:.1f}".format(time.time() - t_generation_start), "s",
                             ", total", "{:.1f}".format(time.time() - t_first_start), "s __")
+
+            # log stuff
+            tb_writer.log_scalar(np.mean(fitnesses), "mean_fit", timesteps_done)
+            tb_writer.log_scalar(np.median(fitnesses), "median_fit", timesteps_done)
+            tb_writer.log_scalar(np.max(fitnesses), "max_fit", timesteps_done)
+            tb_writer.log_scalar(np.mean(ages), "mean_age", timesteps_done)
 
             # cleanup to prevent disk clutter
             to_be_removed = set(re.sub(r'\..*$', '', f) for f in os.listdir(sub_dir)) - set([agent["name"] for agent in population])
@@ -156,18 +168,20 @@ def main():
                 break
         
             # mark weak agents for replacement
-            cutoff_duplicate = math.floor(population_size*duplicate_factor)
-            cutoff_survive = math.floor(population_size*survive_factor)
-            source_agents = population[:cutoff_survive]
+            cutoff_passthrough = math.floor(population_size*passthrough_perc)
+            cutoff_mutating = math.floor(population_size*mutating_perc)
+            source_agents = population[:cutoff_mutating]
+
+            new_population = population[:cutoff_passthrough]
+
             k = 0
-            for i in range(cutoff_survive, population_size):
-                population[i]["name"] = source_agents[k]["name"]
-                population[i]["fit"] = -1
-                if k < cutoff_duplicate: # test degeneration protection
-                #if True: # test/
-                    population[i]["need_mut"] = True
-                    
-                k = (k + 1) % len(source_agents)
+            while len(new_population) < population_size:
+                new_agent = {"name": source_agents[k]["name"], # Take name from source agent, so mutation knows the parent
+                             "fit": -1,
+                             "need_mut": True,
+                             "age": 0}
+                new_population.append(new_agent)
+                k = (k + 1) % len(source_agents)                    
 
             generation += 1
         

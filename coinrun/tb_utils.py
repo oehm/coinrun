@@ -65,8 +65,7 @@ class TB_Writer(object):
         def log_scalar(x, name, step=-1):
             if not name in name_dict:
                 name_dict[name] = curr_name_idx[0]
-                tf_name = (name + '_' + Config.RUN_ID) if curr_name_idx[0] == 0 else name
-                make_scalar_graph(tf_name)
+                make_scalar_graph(name)
                 curr_name_idx[0] += 1
 
             idx = name_dict[name]
