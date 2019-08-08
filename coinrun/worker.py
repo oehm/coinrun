@@ -112,7 +112,7 @@ class Worker:
             self.cached = name
         return True
 
-    def work_thread(self, agent, timesteps):
+    def work_thread(self, agent, seed, timesteps):
         need_save = False
         # init new individual
         if not self.restore_model(name=agent["name"]):
@@ -131,35 +131,39 @@ class Worker:
         else:
             agent["age"] += 1
         # run agent
-        obs = self.env.reset()
+        obs = self.env.reset(seed=seed)
         state = self.model.initial_state
         done = np.zeros(self.nenvs)
 
         scores = np.zeros(self.nenvs)
         score_counts = np.zeros(self.nenvs)
-        rew_accum = 0
+        episode_lengths = []
         for _ in range(timesteps):
             action, _, state, _ = self.model.step( obs, state, done)
             obs, rew, done, info = self.env.step(action)
-            rew_accum += rew
             for i, d in enumerate(done):
                 if d:
                     score_counts[i] += 1
-                    if 'episode' in info[i]:
-                        scores[i] += info[i].get('episode')['r']
+                    assert('episode' in info[i])
+                    scores[i] += info[i].get('episode')['r']
+                    episode_lengths.append(info[i].get('episode')['l'])
 
 
-        #agent["fit"] = np.mean(rew_accum)
         percentage_solved = np.zeros(self.nenvs)
         for i, (score, score_count) in enumerate(zip(scores, score_counts)):
             if score_count:
                 percentage_solved[i] = score/score_count
 
+        if(len(episode_lengths) > 0):
+            agent["mean_ep_len"] = np.mean(episode_lengths)
+        else:
+            agent["mean_ep_len"] = 0
+
         agent["fit"] = np.mean( percentage_solved )
 
 
-    def work(self, agent, timesteps):
-        self.thread = Thread(target=self.work_thread, args=[agent, timesteps])
+    def work(self, agent, seed, timesteps):
+        self.thread = Thread(target=self.work_thread, args=[agent, seed, timesteps])
         self.thread.start()
         return self.thread
 

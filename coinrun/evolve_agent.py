@@ -102,7 +102,8 @@ def main():
     population = [{"name": loaded_name or str(uuid.uuid1()), 
                    "fit": -1, 
                    "need_mut": loaded_name != None and i != 0,
-                   "age": -1} 
+                   "age": -1,
+                   "mean_ep_len": -1} 
                    for i in range(population_size)]
 
     utils.mpi_print("== population size", population_size, ", t_agent ", timesteps_per_agent, " ==")
@@ -118,6 +119,8 @@ def main():
             utils.mpi_print("")
             utils.mpi_print("__ Generation", generation, " __")
 
+            generation_seed = random.randint(0, 1000000)
+
             # initialise and evaluate all new agents
             for agent in population:
                 #if agent["fit"] < 0: # test/
@@ -128,7 +131,7 @@ def main():
                     while not_in_work:
                         for worker in workers:
                             if worker.can_take_work():
-                                worker.work(agent, timesteps_per_agent)
+                                worker.work(agent, generation_seed, timesteps_per_agent)
                                 not_in_work = False
                                 break
 
@@ -143,6 +146,7 @@ def main():
             # print stuff
             fitnesses = [agent["fit"] for agent in population]
             ages = [agent["age"] for agent in population]
+            ep_lens = [agent["mean_ep_len"] for agent in population]
 
             utils.mpi_print(*["{:5.3f}".format(f) for f in fitnesses])
             utils.mpi_print(*["{:5}".format(a) for a in ages])
@@ -156,6 +160,7 @@ def main():
             tb_writer.log_scalar(np.median(fitnesses), "median_fit", timesteps_done)
             tb_writer.log_scalar(np.max(fitnesses), "max_fit", timesteps_done)
             tb_writer.log_scalar(np.mean(ages), "mean_age", timesteps_done)
+            tb_writer.log_scalar(np.mean(ep_lens), "mean_ep_lens", timesteps_done)
 
             # cleanup to prevent disk clutter
             to_be_removed = set(re.sub(r'\..*$', '', f) for f in os.listdir(sub_dir)) - set([agent["name"] for agent in population])
@@ -179,7 +184,8 @@ def main():
                 new_agent = {"name": source_agents[k]["name"], # Take name from source agent, so mutation knows the parent
                              "fit": -1,
                              "need_mut": True,
-                             "age": 0}
+                             "age": -1,
+                             "mean_ep_len": -1}
                 new_population.append(new_agent)
                 k = (k + 1) % len(source_agents)                    
 

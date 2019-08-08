@@ -60,7 +60,7 @@ class ConfigSingle(object):
         type_keys.append(('gamma', 'gamma', float, 0.999))
 
         # evolution Hyperparameters
-        type_keys.append(('t', 'timesteps', int, 1e6))
+        type_keys.append(('t', 'timesteps', int, 1e9))
         type_keys.append(('work', 'worker_count', int, 16))
         type_keys.append(('pop', 'population_size', int, 64))
         type_keys.append(('ta', 'timesteps_agent', int, 500))
