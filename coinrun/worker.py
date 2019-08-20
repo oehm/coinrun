@@ -34,21 +34,21 @@ class Worker:
             self.model_init_op = tf.variables_initializer(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=self.scope_dir + "model"))
 
             with tf.variable_scope("mutation"):
-            self.model_noise_ops = []
-            #total_num_params = 0
-            for p in params_train:
-                shape = p.get_shape()
-                #shape_list = shape.as_list()
-                #num_params = np.prod(shape_list)
-                #utils.mpi_print('param', p, num_params)
-                #total_num_params += num_params
+                self.model_noise_ops = []
+                #total_num_params = 0
+                for p in params_train:
+                    shape = p.get_shape()
+                    #shape_list = shape.as_list()
+                    #num_params = np.prod(shape_list)
+                    #utils.mpi_print('param', p, num_params)
+                    #total_num_params += num_params
 
-                noise = tf.random_normal(shape, mean=0, stddev=Config.MUTATION_RATE, dtype=tf.float32)
-                self.model_noise_ops.append(tf.assign_add(p, noise))
-                # for p in params_train_head:
-                #     shape = p.get_shape()
-                #     noise = tf.random_normal(shape, mean=0, stddev=0.015, dtype=tf.float32)
-                #     self.model_noise_ops.append(tf.assign_add(p, noise))
+                    noise = tf.random_normal(shape, mean=0, stddev=Config.MUTATION_RATE, dtype=tf.float32)
+                    self.model_noise_ops.append(tf.assign_add(p, noise))
+                    # for p in params_train_head:
+                    #     shape = p.get_shape()
+                    #     noise = tf.random_normal(shape, mean=0, stddev=0.015, dtype=tf.float32)
+                    #     self.model_noise_ops.append(tf.assign_add(p, noise))
 
             #utils.mpi_print('total num params:', total_num_params)
 
