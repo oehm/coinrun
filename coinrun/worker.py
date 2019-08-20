@@ -150,7 +150,7 @@ class Worker:
             obs, rew, done, info = self.env.step(action)
             for i, d in enumerate(done):
                 if d:
-                    score_counts[i] += 1
+                    episode_counts[i] += 1
                     assert('episode' in info[i])
                     scores[i] += info[i].get('episode')['r']
                     episode_lengths.append(info[i].get('episode')['l'])
@@ -158,7 +158,7 @@ class Worker:
         percentage_solved = np.zeros(self.nenvs)
         for i, (score, episode_count) in enumerate(zip(scores, episode_counts)):
             if episode_count:
-                percentage_solved[i] = score/score_count
+                percentage_solved[i] = score/episode_count
 
         if(len(episode_lengths) > 0):
             agent["mean_ep_len"] = np.mean(episode_lengths)
