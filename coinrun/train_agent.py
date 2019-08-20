@@ -25,7 +25,7 @@ def main():
     config.gpu_options.allow_growth = True # pylint: disable=E1101
 
     nenvs = Config.NUM_ENVS
-    total_timesteps = int(1e6)
+    total_timesteps = int(256e6)
     save_interval = args.save_interval
 
     env = utils.make_general_env(nenvs, seed=rank)

@@ -66,7 +66,7 @@ class ConfigSingle(object):
         type_keys.append(('ta', 'timesteps_agent', int, 500))
         type_keys.append(('passp', 'passthrough_perc', float, 1.0 / 8))
         type_keys.append(('mutp', 'mutating_perc', float, 1.0 / 16))
-        type_keys.append(('mutr', 'mutation_rate', float, 0.01))
+        type_keys.append(('mutr', 'mutation_rate', float, 0.005))
 
         # Should the agent's velocity be painted in the upper left corner of observations.
         # 1/0 means True/False
