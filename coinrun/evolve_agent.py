@@ -141,7 +141,7 @@ def main():
                 Thread.join(worker.thread)
 
             # sort by fitness
-            population.sort(key=lambda k: k['fit'], reverse=True) 
+            population.sort(key=lambda k: k["fit"], reverse=True) 
 
             # print stuff
             fitnesses = [agent["fit"] for agent in population]
@@ -160,7 +160,9 @@ def main():
             tb_writer.log_scalar(np.median(fitnesses), "median_fit", timesteps_done)
             tb_writer.log_scalar(np.max(fitnesses), "max_fit", timesteps_done)
             tb_writer.log_scalar(np.mean(ages), "mean_age", timesteps_done)
-            tb_writer.log_scalar(np.mean(ep_lens), "mean_ep_lens", timesteps_done)
+            ep_lens_mean = np.nanmean(ep_lens)
+            if(ep_lens_mean):
+                tb_writer.log_scalar(ep_lens_mean, "mean_ep_lens", timesteps_done)
 
             # cleanup to prevent disk clutter
             to_be_removed = set(re.sub(r'\..*$', '', f) for f in os.listdir(sub_dir)) - set([agent["name"] for agent in population])

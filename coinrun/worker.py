@@ -23,13 +23,17 @@ class Worker:
             self.model = policy(sess, self.env.observation_space, self.env.action_space, nenvs, 1, create_additional=False)
 
             self.params = tf.trainable_variables(self.scope_dir + "model")
+            # params_train = self.params
             params_train = [v for v in self.params if '/b' not in v.name] # filter biases
+            # params_train_head = [v for v in params_train if '/pi' in v.name]
+            # params_train = [v for v in params_train if '/pi' not in v.name]
 
             params_names = [p.name for p in self.params]
             params_unscoped = [re.sub(self.scope_dir, "", n) for n in params_names] 
 
             self.model_init_op = tf.variables_initializer(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=self.scope_dir + "model"))
 
+            with tf.variable_scope("mutation"):
             self.model_noise_ops = []
             #total_num_params = 0
             for p in params_train:
@@ -41,7 +45,10 @@ class Worker:
 
                 noise = tf.random_normal(shape, mean=0, stddev=Config.MUTATION_RATE, dtype=tf.float32)
                 self.model_noise_ops.append(tf.assign_add(p, noise))
-                # TODO test normalisatiom
+                # for p in params_train_head:
+                #     shape = p.get_shape()
+                #     noise = tf.random_normal(shape, mean=0, stddev=0.015, dtype=tf.float32)
+                #     self.model_noise_ops.append(tf.assign_add(p, noise))
 
             #utils.mpi_print('total num params:', total_num_params)
 
@@ -136,7 +143,7 @@ class Worker:
         done = np.zeros(self.nenvs)
 
         scores = np.zeros(self.nenvs)
-        score_counts = np.zeros(self.nenvs)
+        episode_counts = np.zeros(self.nenvs)
         episode_lengths = []
         for _ in range(timesteps):
             action, _, state, _ = self.model.step( obs, state, done)
@@ -148,19 +155,17 @@ class Worker:
                     scores[i] += info[i].get('episode')['r']
                     episode_lengths.append(info[i].get('episode')['l'])
 
-
         percentage_solved = np.zeros(self.nenvs)
-        for i, (score, score_count) in enumerate(zip(scores, score_counts)):
-            if score_count:
+        for i, (score, episode_count) in enumerate(zip(scores, episode_counts)):
+            if episode_count:
                 percentage_solved[i] = score/score_count
 
         if(len(episode_lengths) > 0):
             agent["mean_ep_len"] = np.mean(episode_lengths)
         else:
-            agent["mean_ep_len"] = 0
+            agent["mean_ep_len"] = float('nan')
 
         agent["fit"] = np.mean( percentage_solved )
-
 
     def work(self, agent, seed, timesteps):
         self.thread = Thread(target=self.work_thread, args=[agent, seed, timesteps])
