@@ -45,10 +45,10 @@ class Worker:
 
                     noise = tf.random_normal(shape, mean=0, stddev=Config.MUTATION_RATE, dtype=tf.float32)
                     self.model_noise_ops.append(tf.assign_add(p, noise))
-                    # for p in params_train_head:
-                    #     shape = p.get_shape()
-                    #     noise = tf.random_normal(shape, mean=0, stddev=0.015, dtype=tf.float32)
-                    #     self.model_noise_ops.append(tf.assign_add(p, noise))
+                # for p in params_train_head:
+                #     shape = p.get_shape()
+                #     noise = tf.random_normal(shape, mean=0, stddev=0.015, dtype=tf.float32)
+                #     self.model_noise_ops.append(tf.assign_add(p, noise))
 
             #utils.mpi_print('total num params:', total_num_params)
 
