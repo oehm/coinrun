@@ -119,8 +119,6 @@ def main():
             utils.mpi_print("")
             utils.mpi_print("__ Generation", generation, " __")
 
-            generation_seed = random.randint(0, 1000000)
-
             # initialise and evaluate all new agents
             for agent in population:
                 #if agent["fit"] < 0: # test/
@@ -131,7 +129,7 @@ def main():
                     while not_in_work:
                         for worker in workers:
                             if worker.can_take_work():
-                                worker.work(agent, generation_seed, timesteps_per_agent)
+                                worker.work(agent, timesteps_per_agent)
                                 not_in_work = False
                                 break
 
@@ -186,8 +184,7 @@ def main():
                 new_agent = {"name": source_agents[k]["name"], # Take name from source agent, so mutation knows the parent
                              "fit": -1,
                              "need_mut": True,
-                             "age": -1,
-                             "mean_ep_len": -1}
+                             "age": 0}
                 new_population.append(new_agent)
                 k = (k + 1) % len(source_agents)                    
 

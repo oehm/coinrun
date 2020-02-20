@@ -71,9 +71,6 @@ lib.vec_create.argtypes = [
     ]
 lib.vec_create.restype = c_int
 
-lib.vec_reset.argtypes = [c_int]
-lib.vec_seeded_reset.argtypes = [c_int, c_int]
-
 lib.vec_close.argtypes = [c_int]
 
 lib.vec_step_async_discrete.argtypes = [c_int, npct.ndpointer(dtype=np.int32, ndim=1)]
@@ -181,12 +178,8 @@ class CoinRunVecEnv(VecEnv):
         lib.vec_close(self.handle)
         self.handle = 0
 
-    def reset(self, seed = None):
+    def reset(self):
         # print("CoinRun ignores resets")
-        if(seed):
-            lib.vec_seeded_reset(self.handle, seed)
-        else:
-            lib.vec_reset(self.handle)
         obs, _, _, _ = self.step_wait()
         return obs
 

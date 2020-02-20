@@ -1423,7 +1423,6 @@ void Monster::step(const std::shared_ptr<Maze>& maze)
 
 struct State {
   int state_n; // in vstate
-  RandGen state_random_gen;
   std::shared_ptr<Maze> maze;
   int ground_n;
   int bg_n;
@@ -1447,12 +1446,12 @@ void state_reset(const std::shared_ptr<State>& state, int game_type)
   int level_seed = 0;
 
   if (USE_LEVEL_SET) {
-    int level_index = state->state_random_gen.randint(0, NUM_LEVELS);
+    int level_index = global_rand_gen.randint(0, NUM_LEVELS);
     level_seed = LEVEL_SEEDS[level_index];
   } else if (NUM_LEVELS > 0) {
-    level_seed = state->state_random_gen.randint(0, NUM_LEVELS);
+    level_seed = global_rand_gen.randint(0, NUM_LEVELS);
   } else {
-    level_seed = state->state_random_gen.randint();
+    level_seed = global_rand_gen.randint();
   }
 
   RandomMazeGenerator maze_gen;
@@ -1871,7 +1870,6 @@ int vec_create(int game_type, int nenvs, int lump_n, bool want_hires, float defa
   for (int n = 0; n < nenvs; n++) {
     vstate->states[n] = std::shared_ptr<State>(new State(vstate));
     vstate->states[n]->state_n = n;
-    vstate->states[n]->state_random_gen.seed(global_rand_gen.randint());
     state_reset(vstate->states[n], vstate->game_type);
     vstate->states[n]->agent_ready = false;
     vstate->states[n]->agent.zoom = default_zoom;
@@ -1978,28 +1976,6 @@ void coinrun_shutdown()
     assert(th->isFinished());
   }
 }
-
-void vec_reset(int handle)
-{
-  std::shared_ptr<VectorOfStates> vstate = vstate_find(handle);
-  for(unsigned int i = 0; i < vstate->states.size(); i++)
-  {
-    state_reset(vstate->states[i], vstate->game_type);
-  } 
-
-}
-
-void vec_seeded_reset(int handle, int seed)
-{
-  global_rand_gen.seed(seed);
-  std::shared_ptr<VectorOfStates> vstate = vstate_find(handle);
-  for(unsigned int i = 0; i < vstate->states.size(); i++)
-  {
-    vstate->states[i]->state_random_gen.seed(global_rand_gen.randint());
-  } 
-  vec_reset(handle);
-}
-
 }
 
 // ------------ GUI -------------
@@ -2142,9 +2118,6 @@ public:
   void keyPressEvent(QKeyEvent* kev)
   {
     keys_pressed[kev->key()] = 1;
-    // if (kev->key() == Qt::Key_X) {
-    //   vec_seeded_reset(viz->control_handle, 42);
-    // }
     if (kev->key() == Qt::Key_Return) {
       viz->show_state->maze->is_terminated = true;
     }

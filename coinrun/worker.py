@@ -119,7 +119,7 @@ class Worker:
             self.cached = name
         return True
 
-    def work_thread(self, agent, seed, timesteps):
+    def work_thread(self, agent, timesteps):
         need_save = False
         # init new individual
         if not self.restore_model(name=agent["name"]):
@@ -138,7 +138,7 @@ class Worker:
         else:
             agent["age"] += 1
         # run agent
-        obs = self.env.reset(seed=seed)
+        obs = self.env.reset()
         state = self.model.initial_state
         done = np.zeros(self.nenvs)
 
