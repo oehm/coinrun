@@ -167,8 +167,8 @@ class Worker:
 
         agent["fit"] = np.mean( percentage_solved )
 
-    def work(self, agent, seed, timesteps):
-        self.thread = Thread(target=self.work_thread, args=[agent, seed, timesteps])
+    def work(self, agent, timesteps):
+        self.thread = Thread(target=self.work_thread, args=[agent, timesteps])
         self.thread.start()
         return self.thread
 
